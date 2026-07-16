@@ -133,7 +133,7 @@ services:
     #  # - ./sample-configs/vision/vlm-gemini.json:/tika-config.json
     environment:
       # 可根據需求限制 Java 記憶體大小（避免大型 PDF 造成 OOM 記憶體溢出）
-      - TIKA_CHILD_JVM_OPTS=-Xmx2g
+      - TIKA_CHILD_JVM_OPTS=-Xmx4g
     depends_on:
       - ollama
     extra_hosts:
