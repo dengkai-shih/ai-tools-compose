@@ -315,5 +315,6 @@ cypress/screenshots
 # docker folder
 surreal_data/
 notebook_data/
-local-files/
+#local-files/
+#tika-config.xml/
 #bash/02-ollama-pull-module.sh

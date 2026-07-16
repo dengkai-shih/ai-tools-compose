@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<properties>
+  <parsers>
+    <!-- 定義預設解析器 -->
+    <parser class="org.apache.tika.parser.DefaultParser">
+      <!-- 針對 PDF 解析器單獨進行設定 -->
+      <parser-exclude class="org.apache.tika.parser.pdf.PDFParser"/>
+    </parser>
+    
+    <!-- 重新配置 PDF 解析器並關閉 OCR -->
+    <parser class="org.apache.tika.parser.pdf.PDFParser">
+      <params>
+        <!-- 關鍵設定：強制不執行 OCR -->
+        <param name="ocrStrategy" type="string">no_ocr</param>
+      </params>
+    </parser>
+  </parsers>
+</properties>

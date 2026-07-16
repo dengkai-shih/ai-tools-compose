@@ -43,8 +43,10 @@ services:
     ports:
       - 3000:8080
     environment:
+      #- OLLAMA_BASE_URL=http://ollama:11434
       - OLLAMA_BASE_URL=${OLLAMA_BASE_URL}
       - WEBUI_SECRET_KEY=
+      #- TIKA_SERVER_URL=http://tika:9998
       - TIKA_SERVER_URL=${TIKA_SERVER_URL}
     # 關鍵設定：調高檔案開啟上限
     ulimits:
@@ -90,6 +92,7 @@ services:
     labels:
       - traefik.enable=true
       #- traefik.http.routers.n8n.rule=Host(`${SUBDOMAIN}.${DOMAIN_NAME}`)
+      #- traefik.http.routers.n8n.rule=Host(`localhost`)
       - traefik.http.routers.n8n.rule=Host(`${N8N_DOMAIN_NAME}`)
       - traefik.http.routers.n8n.tls=true
       - traefik.http.routers.n8n.entrypoints=web,websecure
@@ -107,12 +110,15 @@ services:
     environment:
       - N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS=true
       #- N8N_HOST=${SUBDOMAIN}.${DOMAIN_NAME}
+      #- N8N_HOST=localhost
       - N8N_HOST=${N8N_DOMAIN_NAME}
       - N8N_PORT=5678
       #- N8N_PROTOCOL=https
       - N8N_PROTOCOL=http
       - NODE_ENV=production
       #- WEBHOOK_URL=https://${SUBDOMAIN}.${DOMAIN_NAME}/
+      #- WEBHOOK_URL=http://localhost:5678/
+      #- WEBHOOK_URL=https://shack-earflap-euphemism.ngrok-free.dev/
       - WEBHOOK_URL=${N8N_WEBHOOK_URL}
       - GENERIC_TIMEZONE=${GENERIC_TIMEZONE}
       - TZ=${GENERIC_TIMEZONE}
@@ -143,11 +149,6 @@ services:
     environment:
       # 可根據需求限制 Java 記憶體大小（避免大型 PDF 造成 OOM 記憶體溢出）
       - TIKA_CHILD_JVM_OPTS=-Xmx4g
-      # 關鍵：告訴 Tika Server 啟動時讀取自訂的設定檔
-      - TIKA_CONFIG=/tika-config.xml
-    volumes:
-      # 將主機上的設定檔掛載到容器的根目錄
-      - ./tika-config.xml:/tika-config.xml
     depends_on:
       - ollama
     extra_hosts:
