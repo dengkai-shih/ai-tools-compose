@@ -1,51 +1,54 @@
 # syntax=docker/dockerfile:1
-# Initialize device type args
-# use build args in the docker build command with --build-arg="BUILDARG=true"
+# =============================================================================
+# 專案名稱: ai-tools-compose
+# 檔案用途: Open WebUI 自訂 Dockerfile 多階段建置檔
+# 建置流程:
+#   階段一 (build): 使用 Node.js 22 Alpine 編譯 SvelteKit 前端靜態資源
+#   階段二 (base) : 使用 Python 3.11-slim 建立後端 API 服務、安裝 Embedding/Whisper 模型與系統依賴
+# =============================================================================
+
+# -----------------------------------------------------------------------------
+# 建置參數 (Build Arguments)
+# -----------------------------------------------------------------------------
 ARG USE_CUDA=false
 ARG USE_OLLAMA=false
 ARG USE_SLIM=false
 ARG USE_PERMISSION_HARDENING=false
-# Tested with cu117 for CUDA 11 and cu121 for CUDA 12 (default)
 ARG USE_CUDA_VER=cu128
-# any sentence transformer model; models to use can be found at https://huggingface.co/models?library=sentence-transformers
-# Leaderboard: https://huggingface.co/spaces/mteb/leaderboard 
-# for better performance and multilangauge support use "intfloat/multilingual-e5-large" (~2.5GB) or "intfloat/multilingual-e5-base" (~1.5GB)
-# IMPORTANT: If you change the embedding model (sentence-transformers/all-MiniLM-L6-v2) and vice versa, you aren't able to use RAG Chat with your previous documents loaded in the WebUI! You need to re-embed them.
 ARG USE_EMBEDDING_MODEL=sentence-transformers/all-MiniLM-L6-v2
 ARG USE_RERANKING_MODEL=""
 ARG USE_AUXILIARY_EMBEDDING_MODEL=TaylorAI/bge-micro-v2
-
-# Tiktoken encoding name; models to use can be found at https://huggingface.co/models?library=tiktoken
 ARG USE_TIKTOKEN_ENCODING_NAME="cl100k_base"
-
 ARG BUILD_HASH=dev-build
-# Override at your own risk - non-root configurations are untested
 ARG UID=0
 ARG GID=0
 
-######## WebUI frontend ########
+# =============================================================================
+# 階段一：WebUI 前端建置 (Node.js Frontend Stage)
+# =============================================================================
 FROM --platform=$BUILDPLATFORM node:22-alpine3.20 AS build
 ARG BUILD_HASH
 
-# Set Node.js options (heap limit Allocation failed - JavaScript heap out of memory)
-# ENV NODE_OPTIONS="--max-old-space-size=4096"
-
 WORKDIR /app
 
-# to store git revision in build
+# 安裝 git 專用建置修訂紀錄
 RUN apk add --no-cache git
 
+# 安裝前端 npm 依賴套件
 COPY package.json package-lock.json ./
 RUN npm ci --force
 
+# 複製前端原始碼並進行建置
 COPY . .
 ENV APP_BUILD_HASH=${BUILD_HASH}
 RUN npm run build
 
-######## WebUI backend ########
+# =============================================================================
+# 階段二：WebUI 後端與執行環境 (Python Backend Stage)
+# =============================================================================
 FROM python:3.11-slim-bookworm AS base
 
-# Use args
+# 載入建置變數
 ARG USE_CUDA
 ARG USE_OLLAMA
 ARG USE_CUDA_VER
@@ -57,13 +60,12 @@ ARG USE_AUXILIARY_EMBEDDING_MODEL
 ARG UID
 ARG GID
 
-# Python settings
+# Python 環境設定
 ENV PYTHONUNBUFFERED=1
 
-## Basis ##
+# 基礎環境變數
 ENV ENV=prod \
     PORT=8080 \
-    # pass build args to the build
     USE_OLLAMA_DOCKER=${USE_OLLAMA} \
     USE_CUDA_DOCKER=${USE_CUDA} \
     USE_SLIM_DOCKER=${USE_SLIM} \
@@ -72,44 +74,32 @@ ENV ENV=prod \
     USE_RERANKING_MODEL_DOCKER=${USE_RERANKING_MODEL} \
     USE_AUXILIARY_EMBEDDING_MODEL_DOCKER=${USE_AUXILIARY_EMBEDDING_MODEL}
 
-## Basis URL Config ##
+# 服務基礎 URL
 ENV OLLAMA_BASE_URL="/ollama" \
     OPENAI_API_BASE_URL=""
 
-## API Key and Security Config ##
+# 金鑰與隱私設定
 ENV OPENAI_API_KEY="" \
     WEBUI_SECRET_KEY="" \
     SCARF_NO_ANALYTICS=true \
     DO_NOT_TRACK=true \
     ANONYMIZED_TELEMETRY=false
 
-#### Other models #########################################################
-## whisper TTS model settings ##
+# 語音與文字 Embedding 模型設定
 ENV WHISPER_MODEL="base" \
-    WHISPER_MODEL_DIR="/app/backend/data/cache/whisper/models"
-
-## RAG Embedding model settings ##
-ENV RAG_EMBEDDING_MODEL="$USE_EMBEDDING_MODEL_DOCKER" \
+    WHISPER_MODEL_DIR="/app/backend/data/cache/whisper/models" \
+    RAG_EMBEDDING_MODEL="$USE_EMBEDDING_MODEL_DOCKER" \
     RAG_RERANKING_MODEL="$USE_RERANKING_MODEL_DOCKER" \
     AUXILIARY_EMBEDDING_MODEL="$USE_AUXILIARY_EMBEDDING_MODEL_DOCKER" \
-    SENTENCE_TRANSFORMERS_HOME="/app/backend/data/cache/embedding/models"
-
-## Tiktoken model settings ##
-ENV TIKTOKEN_ENCODING_NAME="cl100k_base" \
-    TIKTOKEN_CACHE_DIR="/app/backend/data/cache/tiktoken"
-
-## Hugging Face download cache ##
-ENV HF_HOME="/app/backend/data/cache/embedding/models"
-
-## Torch Extensions ##
-# ENV TORCH_EXTENSIONS_DIR="/.cache/torch_extensions"
-
-#### Other models ##########################################################
+    SENTENCE_TRANSFORMERS_HOME="/app/backend/data/cache/embedding/models" \
+    TIKTOKEN_ENCODING_NAME="cl100k_base" \
+    TIKTOKEN_CACHE_DIR="/app/backend/data/cache/tiktoken" \
+    HF_HOME="/app/backend/data/cache/embedding/models"
 
 WORKDIR /app/backend
-
 ENV HOME=/root
-# Create user and group if not root
+
+# 建立指定非根帳號與權限設定
 RUN if [ $UID -ne 0 ]; then \
     if [ $GID -ne 0 ]; then \
     addgroup --gid $GID app; \
@@ -119,11 +109,9 @@ RUN if [ $UID -ne 0 ]; then \
 
 RUN mkdir -p $HOME/.cache/chroma
 RUN echo -n 00000000-0000-0000-0000-000000000000 > $HOME/.cache/chroma/telemetry_user_id
-
-# Make sure the user has access to the app and root directory
 RUN chown -R $UID:$GID /app $HOME
 
-# Install common system dependencies
+# 安裝 Linux 系統基礎依賴套件
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
     git build-essential pandoc gcc netcat-openbsd curl jq ca-certificates \
@@ -132,17 +120,15 @@ RUN apt-get update && \
     ffmpeg libsm6 libxext6 zstd \
     && rm -rf /var/lib/apt/lists/*
 
-# install python dependencies
+# 複製 Python 後端套件清單
 COPY --chown=$UID:$GID ./backend/requirements.txt ./requirements.txt
 
-# Set UV_LINK_MODE to copy to prevent 0-byte file corruption in QEMU arm64 cross-builds
 ENV UV_LINK_MODE=copy
 
+# 安裝 Python 依賴項與預下載向量/語音模型
 RUN set -e; \
     pip3 install --no-cache-dir uv; \
     if [ "$USE_CUDA" = "true" ]; then \
-    # If you use CUDA the whisper and embedding model will be downloaded on first use
-    # fix: pin torch<=2.9.1 - torch 2.10.0 aarch64 wheels cause SIGILL on ARM devices (RPi 4 Cortex-A72) #21349
     pip3 install 'torch<=2.9.1' torchvision torchaudio --index-url https://download.pytorch.org/whl/$USE_CUDA_DOCKER_VER --no-cache-dir; \
     uv pip install --system -r requirements.txt --no-cache-dir; \
     python -c "import os; from sentence_transformers import SentenceTransformer; SentenceTransformer(os.environ['RAG_EMBEDDING_MODEL'], device='cpu')"; \
@@ -164,7 +150,7 @@ RUN set -e; \
     mkdir -p /app/backend/data; chown -R $UID:$GID /app/backend/data/; \
     rm -rf /var/lib/apt/lists/*;
 
-# Install Ollama if requested
+# 若啟用 Ollama 則預先安裝 Ollama 二進位檔
 RUN if [ "$USE_OLLAMA" = "true" ]; then \
     date +%s > /tmp/ollama_build_hash && \
     echo "Cache broken at timestamp: `cat /tmp/ollama_build_hash`" && \
@@ -172,25 +158,20 @@ RUN if [ "$USE_OLLAMA" = "true" ]; then \
     rm -rf /var/lib/apt/lists/*; \
     fi
 
-# copy embedding weight from build
-# RUN mkdir -p /root/.cache/chroma/onnx_models/all-MiniLM-L6-v2
-# COPY --from=build /app/onnx /root/.cache/chroma/onnx_models/all-MiniLM-L6-v2/onnx
-
-# copy built frontend files
+# 從前端 stage 複製編譯完成的靜態檔案
 COPY --chown=$UID:$GID --from=build /app/build /app/build
 COPY --chown=$UID:$GID --from=build /app/CHANGELOG.md /app/CHANGELOG.md
 COPY --chown=$UID:$GID --from=build /app/package.json /app/package.json
 
-# copy backend files
+# 複製後端 Python 程式碼
 COPY --chown=$UID:$GID ./backend .
 
 EXPOSE 8080
 
+# 服務健康檢查指令
 HEALTHCHECK CMD curl --silent --fail http://localhost:${PORT:-8080}/health | jq -ne 'input.status == true' || exit 1
 
-# Minimal, atomic permission hardening for OpenShift (arbitrary UID):
-# - Group 0 owns /app and /root
-# - Directories are group-writable and have SGID so new files inherit GID 0
+# OpenShift 權限加固處理
 RUN if [ "$USE_PERMISSION_HARDENING" = "true" ]; then \
     set -eux; \
     chgrp -R 0 /app /root || true; \
@@ -205,4 +186,5 @@ ARG BUILD_HASH
 ENV WEBUI_BUILD_VERSION=${BUILD_HASH}
 ENV DOCKER=true
 
+# 啟動命令
 CMD [ "bash", "start.sh"]

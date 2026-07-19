@@ -313,6 +313,7 @@ cypress/screenshots
 .cptr
 
 # docker folder
+data/
 surreal_data/
 notebook_data/
 #local-files/

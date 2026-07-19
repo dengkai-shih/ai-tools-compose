@@ -1,16 +1,24 @@
 <?xml version="1.0" encoding="UTF-8"?>
+<!-- ===========================================================================
+  專案名稱: ai-tools-compose
+  檔案用途: Apache Tika 解析伺服器自訂設定檔 (tika-config.xml)
+  功能說明:
+    1. 定義 Apache Tika 文本抽取引擎的解析器策略 (Parser Configuration)
+    2. 停用 PDF 文件解析時的自動 OCR 光學字元辨識功能 (ocrStrategy = no_ocr)
+    3. 提升 PDF 文字抽取效能並大幅降低 CPU / 記憶體負擔
+=========================================================================== -->
 <properties>
   <parsers>
-    <!-- 定義預設解析器 -->
+    <!-- 定義預設綜合解析器 -->
     <parser class="org.apache.tika.parser.DefaultParser">
-      <!-- 針對 PDF 解析器單獨進行設定 -->
+      <!-- 針對 PDF 解析器進行排除，以便下方個別自訂 PDFParser 參數 -->
       <parser-exclude class="org.apache.tika.parser.pdf.PDFParser"/>
     </parser>
     
-    <!-- 重新配置 PDF 解析器並關閉 OCR -->
+    <!-- 重新配置 PDFParser，優化大檔案文字擷取 -->
     <parser class="org.apache.tika.parser.pdf.PDFParser">
       <params>
-        <!-- 關鍵設定：強制不執行 OCR -->
+        <!-- 關鍵設定：強制不執行 OCR 文字辨識，加速純文字 PDF 處理並避免圖像 OCR 造成效能瓶頸 -->
         <param name="ocrStrategy" type="string">no_ocr</param>
       </params>
     </parser>

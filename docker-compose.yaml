@@ -1,15 +1,29 @@
+# =============================================================================
+# 專案名稱: ai-tools-compose
+# 功能簡述: AI 工具整合堆疊 Docker Compose 設定檔
+# 架構模組:
+#   1. ollama      - 本地大語言模型 (LLM) 推理引擎服務
+#   2. qdrant      - 向量資料庫服務 (向量檢索與 RAG 支援)
+#   3. open-webui  - Open WebUI 網頁圖形化介面 (整合 Ollama、Qdrant 與 Tika)
+#   4. postgres    - PostgreSQL 16 關聯式資料庫 (提供 n8n 資料持久化)
+#   5. n8n         - 工作流自動化與 AI Agent 流程編排平台
+#   6. tika        - Apache Tika 文件解析伺服器 (支援 PDF/Word 等文本抽離)
+# 網路名稱: web-app-bridge (橋接網路)
+# 資料儲存: 全部掛載至專案內 `./data/` 實體相對路徑
+# =============================================================================
+
 services:
+  # ---------------------------------------------------------------------------
+  # 1. Ollama 大語言模型推理服務
+  # ---------------------------------------------------------------------------
   ollama:
-    volumes:
-      - ollama:/root/.ollama
     container_name: ollama
+    image: ollama/ollama:${OLLAMA_DOCKER_TAG-latest}
     pull_policy: always
     tty: true
     restart: unless-stopped
-    image: ollama/ollama:${OLLAMA_DOCKER_TAG-latest}
-    # Expose Ollama API outside the container stack
     ports:
-      - 11434:11434
+      - "11434:11434" # 開放 API 埠號供外部或宿主機調用
     # 關鍵設定：調高檔案開啟上限
     #ulimits:
     #  nofile:
@@ -26,41 +40,38 @@ services:
     #             - gpu
     #extra_hosts:
     #  - host.docker.internal:host-gateway
+    volumes:
+      - ./data/ollama:/root/.ollama # 模型檔與快取實體儲存路徑
     networks:
       - web-app-bridge
 
+  # ---------------------------------------------------------------------------
+  # 2. Qdrant 高效能向量資料庫服務
+  # ---------------------------------------------------------------------------
   qdrant:
-    image: qdrant/qdrant:latest
     container_name: qdrant
+    image: qdrant/qdrant:latest
+    restart: always
     ports:
-      - "6333:6333" # REST API & Dashboard
-      - "6334:6334" # gRPC API
+      - "6333:6333" # REST API 與 Dashboard 控制台埠號
+      - "6334:6334" # gRPC 高效傳輸介面埠號
     environment:
       - QDRANT_API_KEY=${QDRANT_API_KEY}
       - QDRANT_SERVICE_READ_ONLY_API_KEY=${QDRANT_SERVICE_READ_ONLY_API_KEY}
     volumes:
-      - qdrant_data:/qdrant/storage
-    restart: always
+      - ./data/qdrant:/qdrant/storage # 向量索引與資料持久化實體路徑
     networks:
       - web-app-bridge
 
+  # ---------------------------------------------------------------------------
+  # 3. Open WebUI 網頁圖形化介面服務
+  # ---------------------------------------------------------------------------
   open-webui:
-    #build:
-    #  context: .
-    #  dockerfile: Dockerfile
-    image: ghcr.io/open-webui/open-webui:${WEBUI_DOCKER_TAG-main}
     container_name: open-webui
-    volumes:
-      - open-webui:/app/backend/data
-    depends_on:
-      ollama:
-        condition: service_started
-      qdrant:
-        condition: service_started
-      tika:
-        condition: service_started
+    image: ghcr.io/open-webui/open-webui:${WEBUI_DOCKER_TAG-main}
+    restart: unless-stopped
     ports:
-      - 3000:8080
+      - "3000:8080" # 瀏覽器存取網址: http://localhost:3000
     environment:
       - OLLAMA_BASE_URL=${OLLAMA_BASE_URL}
       - WEBUI_SECRET_KEY=${WEBUI_SECRET_KEY}
@@ -71,47 +82,55 @@ services:
       - QDRANT_URI=${QDRANT_URI}
       - QDRANT_API_KEY=${QDRANT_API_KEY}
       - QDRANT_SERVICE_READ_ONLY_API_KEY=${QDRANT_SERVICE_READ_ONLY_API_KEY}
-    # 關鍵設定：調高檔案開啟上限
-    #ulimits:
-    #  nofile:
-    #    soft: 65536
-    #    hard: 65536
+    volumes:
+      - ./data/open-webui:/app/backend/data # WebUI 使用者設定與對話資料庫
+    depends_on:
+      ollama:
+        condition: service_started
+      qdrant:
+        condition: service_started
+      tika:
+        condition: service_started
     extra_hosts:
-      - host.docker.internal:host-gateway
-    restart: unless-stopped
+      - "host.docker.internal:host-gateway" # 允許容器存取宿主機網路
     networks:
       - web-app-bridge
 
+  # ---------------------------------------------------------------------------
+  # 4. PostgreSQL 16 關聯式資料庫服務
+  # ---------------------------------------------------------------------------
   postgres:
-    image: postgres:16
     container_name: postgres-16
+    image: postgres:16
     restart: always
+    ports:
+      - "5432:5432" # PostgreSQL 資料庫連線埠號
     environment:
       - POSTGRES_USER=${POSTGRES_USER}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
       - POSTGRES_DB=${POSTGRES_DB}
       - POSTGRES_NON_ROOT_USER=${POSTGRES_NON_ROOT_USER}
       - POSTGRES_NON_ROOT_PASSWORD=${POSTGRES_NON_ROOT_PASSWORD}
-    ports:
-      - "5432:5432"
     volumes:
-      - db_storage:/var/lib/postgresql/data
-      - ./init-data.sh:/docker-entrypoint-initdb.d/init-data.sh
+      - ./data/postgres:/var/lib/postgresql/data # 資料庫實體資料檔儲存區
+      - ./init-data.sh:/docker-entrypoint-initdb.d/init-data.sh # 初始化建立非 Root 使用者指令腳本
     healthcheck:
-      # Linux / Mac healthcheck
-      test: ['CMD-SHELL', 'pg_isready -h localhost -U ${POSTGRES_USER} -d ${POSTGRES_DB}']
-      # Windows healthcheck
-      #test: ["CMD-SHELL", "pg_isready -h localhost -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      test: [ 'CMD-SHELL', 'pg_isready -h localhost -U ${POSTGRES_USER} -d ${POSTGRES_DB}' ]
       interval: 5s
       timeout: 5s
       retries: 10
     networks:
       - web-app-bridge
 
+  # ---------------------------------------------------------------------------
+  # 5. n8n 工作流與 AI Agent 自動化服務
+  # ---------------------------------------------------------------------------
   n8n:
-    image: docker.n8n.io/n8nio/n8n:latest
     container_name: n8n
+    image: docker.n8n.io/n8nio/n8n:latest
     restart: always
+    ports:
+      - "5678:5678" # n8n 網頁控制台埠號: http://localhost:5678
     environment:
       - DB_TYPE=postgresdb
       - DB_POSTGRESDB_HOST=postgres
@@ -119,78 +138,52 @@ services:
       - DB_POSTGRESDB_DATABASE=${POSTGRES_DB}
       - DB_POSTGRESDB_USER=${POSTGRES_NON_ROOT_USER}
       - DB_POSTGRESDB_PASSWORD=${POSTGRES_NON_ROOT_PASSWORD}
-      - N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS=true
-      #- N8N_HOST=${SUBDOMAIN}.${DOMAIN_NAME}
+      - N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS=false # 停用嚴格 POSIX 權限檢查以確保 Windows 實體掛載相容性
       - N8N_HOST=${N8N_DOMAIN_NAME}
       - N8N_PORT=5678
-      #- N8N_PROTOCOL=https
       - N8N_PROTOCOL=http
       - NODE_ENV=production
-      #- WEBHOOK_URL=https://${SUBDOMAIN}.${DOMAIN_NAME}/
       - WEBHOOK_URL=${N8N_WEBHOOK_URL}
       - GENERIC_TIMEZONE=${GENERIC_TIMEZONE}
       - TZ=${GENERIC_TIMEZONE}
       - N8N_SECURE_COOKIE=false
-    ports:
-      - "5678:5678"
     links:
       - postgres
     volumes:
-      - n8n_storage:/home/node/.n8n
-      - ./local-files:/files
+      - ./data/n8n:/home/node/.n8n # n8n 工作流程與認證資訊儲存區
+      - ./local-files:/files # 允許 n8n 讀寫本地端檔案儲存區
     depends_on:
       ollama:
         condition: service_started
       postgres:
         condition: service_healthy
     extra_hosts:
-      - host.docker.internal:host-gateway
+      - "host.docker.internal:host-gateway"
     networks:
       - web-app-bridge
 
-  ## Apache Tika Server
+  # ---------------------------------------------------------------------------
+  # 6. Apache Tika 文件文本解析與抽取服務
+  # ---------------------------------------------------------------------------
   tika:
-    image: apache/tika:latest-full
     container_name: apache-tika
-    #command: -c /tika-config.json
-    #restart: on-failure
+    image: apache/tika:latest-full
     restart: unless-stopped
     ports:
-      - "9998:9998"
-    #volumes:
-    #  - ./sample-configs/vision/vlm-openai.json:/tika-config.json
-    #  # - ./sample-configs/vision/vlm-claude.json:/tika-config.json
-    #  # - ./sample-configs/vision/vlm-gemini.json:/tika-config.json
+      - "9998:9998" # Tika REST Server API 埠號
     environment:
-      # 可根據需求限制 Java 記憶體大小（避免大型 PDF 造成 OOM 記憶體溢出）
-      - TIKA_CHILD_JVM_OPTS=-Xmx4g
-      # 關鍵：告訴 Tika Server 啟動時讀取自訂的設定檔
-      #- TIKA_CONFIG=/tika-config.xml
-    #volumes:
-    #  # 將主機上的設定檔掛載到容器的根目錄
-    #  - ./tika-config.xml:/tika-config.xml
+      - TIKA_CHILD_JVM_OPTS=-Xmx4g # 限制 JVM 最大記憶體為 4GB 避免大型文件 OOM
     depends_on:
       ollama:
         condition: service_started
     extra_hosts:
-      - host.docker.internal:host-gateway
+      - "host.docker.internal:host-gateway"
     networks:
       - web-app-bridge
 
-volumes:
-  ollama:
-    driver: local
-  open-webui:
-    driver: local
-  n8n_storage:
-    driver: local
-  qdrant_data:
-    driver: local
-  db_storage:
-    driver: local
-  #traefik_data:
-  #  driver: local
-
+# -----------------------------------------------------------------------------
+# 網路定義
+# -----------------------------------------------------------------------------
 networks:
   web-app-bridge:
-    external: true
+    external: true # 使用外部預先建立之橋接網路，確保與其他堆疊模組彈性連線
