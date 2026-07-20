@@ -188,7 +188,7 @@ sequenceDiagram
 | | `QDRANT_API_KEY` | `(自訂密碼)` | Qdrant 管理者 API 金鑰 |
 | **Tika** | `TIKA_SERVER_URL` | `http://tika:9998` | Tika 文件解析伺服器內部網址 |
 | **PostgreSQL** | `POSTGRES_USER` | `root` | PostgreSQL 管理者帳號 |
-| | `POSTGRES_PASSWORD` | `@7YgV5tHn,.` | PostgreSQL 管理者密碼 |
+| | `POSTGRES_PASSWORD` | `(自訂密碼)` | PostgreSQL 管理者密碼 |
 | | `POSTGRES_DB` | `n8n` | 預設建立之資料庫名稱 |
 | **n8n** | `N8N_DOMAIN_NAME` | `localhost` | n8n 服務網域名稱 |
 | | `N8N_WEBHOOK_URL` | `https://your-domain.com/` | n8n 外部 Webhook 呼叫位址 |
