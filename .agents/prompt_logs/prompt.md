@@ -65,3 +65,66 @@
    (5) 逐步解說 (Walkthrough)：逐步解說項目細部資訊，以 markdown 檔案儲存在 .agents/skills/ai-tools-compose/references/ 的資料夾內。
    (6) 完成後的檢查 (Final inspection)：檢查作業細部資訊，以 markdown 檔案儲存在 .agents/skills/ai-tools-compose/inspections/ 的資料夾內。
  </skills>
+
+ ------
+2026-07-20 12:17:42
+[SKILL.md](file;file:///home/dengkai/projects/ai-tools-compose/.agents/skills/ai-tools-compose/SKILL.md) .env設定
+
+------
+2026-07-20 12:19:39
+# 1. 將n8n權限問題加入 docker compose up 自動修正。
+
+------
+2026-07-20 12:19:39
+# 1. docker-compose.yaml 自動初始化目錄與權限修復服務 (init-dir)，加入可自動判斷不同作業系統進行不同修復，如：
+ - windows 自動改為 windows 修復方式。
+ - linux 自動改為 linux 修復方式。
+ - mac 自動改為 mac 修復方式。
+
+------
+2026-07-20 12:45:40
+# 1. docker open webui unhealthy
+
+------
+2026-07-20 12:45:40
+# 1. 依據上述的對話內容修改<reademe>、<task_log>、<skill>資訊：
+ <reademe>
+  - 「README.md 說明檔資訊」(README.md)。
+  - 更新專案內的程式、服務設定檔(docker-compose.yaml, .env, .yaml, .env, .sh, Dockerfile 等設定檔)的詳細說明與功能描述。
+ </reademe>
+ <task_log>
+  - 「實作計畫 (Implementation Plan)」的資訊(/.agents/task_logs/01_implementation_plan.md)。
+  - 「任務清單 (Task List)」資訊儲存在專案內的資訊(/.agents/task_logs/02_task_list.md)。
+  - 「逐步解說 (Walkthrough)」資訊儲存在專案內的資訊(/.agents/task_logs/03_walkthrough.md)。
+ </task_log>
+ <skill>
+  - 修改 .agents/skills/ai-tools-compose/SKILL.md 檔案資訊包含：
+   (1) SKILL 飆頭描述 (name, description)。
+   (2) 角色定位 (role)。
+   (3) 準則 (rules)。
+   (4) 指定工具 (tools)：指定工具細部資訊，以 markdown 檔案儲存在 .agents/skills/ai-tools-compose/scripts/ 的資料夾內。
+   (5) 逐步解說 (Walkthrough)：逐步解說項目細部資訊，以 markdown 檔案儲存在 .agents/skills/ai-tools-compose/references/ 的資料夾內。
+   (6) 完成後的檢查 (Final inspection)：檢查作業細部資訊，以 markdown 檔案儲存在 .agents/skills/ai-tools-compose/inspections/ 的資料夾內。
+ </skill>
+
+------
+2026-07-20 12:55:40
+# 1. 在不變更原檔案說明架構的基礎上，依據上述的對話內容與專案現況修改<reademe>、<task_log>、<skill>資訊：
+ <reademe>
+  - 「README.md 說明檔資訊」(README.md)。
+  - 更新專案內的程式、服務設定檔(docker-compose.yaml, .env, .yaml, .env, .sh, Dockerfile 等設定檔)的詳細說明與功能描述。
+ </reademe>
+ <task_log>
+  - 「實作計畫 (Implementation Plan)」的資訊(/.agents/task_logs/01_implementation_plan.md)。
+  - 「任務清單 (Task List)」資訊儲存在專案內的資訊(/.agents/task_logs/02_task_list.md)。
+  - 「逐步解說 (Walkthrough)」資訊儲存在專案內的資訊(/.agents/task_logs/03_walkthrough.md)。
+ </task_log>
+ <skill>
+  - 修改 .agents/skills/ai-tools-compose/SKILL.md 檔案資訊包含：
+   (1) SKILL 飆頭描述 (name, description)。
+   (2) 角色定位 (role)。
+   (3) 準則 (rules)。
+   (4) 指定工具 (tools)：指定工具細部資訊，以 markdown 檔案儲存在 .agents/skills/ai-tools-compose/scripts/ 的資料夾內。
+   (5) 逐步解說 (Walkthrough)：逐步解說項目細部資訊，以 markdown 檔案儲存在 .agents/skills/ai-tools-compose/references/ 的資料夾內。
+   (6) 完成後的檢查 (Final inspection)：檢查作業細部資訊，以 markdown 檔案儲存在 .agents/skills/ai-tools-compose/inspections/ 的資料夾內。
+ </skill>

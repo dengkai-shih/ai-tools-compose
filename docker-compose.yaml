@@ -14,6 +14,20 @@
 
 services:
   # ---------------------------------------------------------------------------
+  # 0. 初始化資料目錄與權限修復 (自動修復 n8n 等 Volume 存取權限)
+  # ---------------------------------------------------------------------------
+  init-dir:
+    container_name: init-dir
+    image: busybox:latest
+    user: "0:0"
+    command: sh /init-dir.sh
+    volumes:
+      - ./data:/data
+      - ./init-dir.sh:/init-dir.sh:ro
+    networks:
+      - web-app-bridge
+
+  # ---------------------------------------------------------------------------
   # 1. Ollama 大語言模型推理服務
   # ---------------------------------------------------------------------------
   ollama:
@@ -93,6 +107,12 @@ services:
         condition: service_started
     extra_hosts:
       - "host.docker.internal:host-gateway" # 允許容器存取宿主機網路
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8080/api/version"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
     networks:
       - web-app-bridge
 
@@ -153,6 +173,8 @@ services:
       - ./data/n8n:/home/node/.n8n # n8n 工作流程與認證資訊儲存區
       - ./local-files:/files # 允許 n8n 讀寫本地端檔案儲存區
     depends_on:
+      init-dir:
+        condition: service_completed_successfully
       ollama:
         condition: service_started
       postgres:

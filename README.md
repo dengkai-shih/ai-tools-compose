@@ -7,13 +7,14 @@
 ![Docker Compose V2](https://img.shields.io/badge/Docker--Compose-V2-blue?logo=docker)
 ![License](https://img.shields.io/badge/License-MIT-green)
 
-`ai-tools-compose` 是一個整合大語言模型 (LLM) 推理、向量檢索 (RAG)、工作流自動化 (Automation) 及多格式文件文字抽離的微服務 Docker 容器堆疊方案。透過本專案，開發者與企業可快速於本機或伺服器建置一站式 AI 工具開發與運行環境。
+`ai-tools-compose` 是一個整合大語言模型 (LLM) 推理、向量檢索 (RAG)、工作流自動化 (Automation) 及多格式文件文字抽離的一站式微服務 Docker 容器堆疊方案。內建跨平台 (Linux / Windows WSL2 / macOS) 資料目錄權限自動修復機制，透過本專案，開發者與企業可快速於本機或伺服器建置穩定、無縫運作的 AI 工具開發與運行環境。
 
 ---
 
 ## 1. 專案簡介 (Description)
 
-本專案整合 6 大核心微服務：
+本專案整合 6 大核心微服務與 1 個自動初始化修復服務：
+- **init-dir**: 自動化資料目錄建立與跨平台權限修復服務（於 Compose 啟動時自動判斷 Windows / Linux / macOS 並修復權限）。
 - **Ollama**: 本地大語言模型 (LLM) 推理引擎，支援 Llama 3, Qwen, Mistral 等模型。
 - **Qdrant**: 高效能向量資料庫 (Vector Database)，提供 RAG 語意檢索與向量檢索功能。
 - **Open WebUI**: 現代化 Web 聊天圖形介面，整合 Ollama 模型、Qdrant 向量庫與 Tika 文件解析。
@@ -30,6 +31,10 @@ graph TD
     subgraph Host ["宿主機 (Host System)"]
         subgraph BridgeNet ["Docker Bridge 網路: web-app-bridge"]
             
+            subgraph Init_Container ["初始化與權限修復"]
+                InitDir["init-dir 容器<br/>(自動辨識 OS 套用修復)"]
+            end
+
             subgraph WebUI_Container ["Open WebUI 容器"]
                 OpenWebUI["Open WebUI<br/>(Port 3000 -> 8080)"]
             end
@@ -56,6 +61,10 @@ graph TD
         end
     end
 
+    %% 初始化順序
+    InitDir -->|"完成權限修復"| n8n
+    InitDir -->|"自動建立目錄"| LocalData
+
     %% 連線關係
     OpenWebUI -->|"LLM API"| Ollama
     OpenWebUI -->|"Vector Query"| Qdrant
@@ -78,23 +87,16 @@ graph TD
 
 ```mermaid
 flowchart TD
-    A[使用者操作網頁介面] --> B{選擇功能模組}
-    
-    %% 對話流程
-    B -->|對話/ Prompt| C[Open WebUI]
-    C --> D{是否開啟 RAG 檢索?}
-    D -->|是| E[將文件傳送至 Apache Tika 進行內文萃取]
-    E --> F[向量化並儲存/查詢 Qdrant 向量庫]
-    F --> G[組合 Context 傳送至 Ollama]
-    D -->|否| G
-    G --> H[Ollama 進行 LLM 模型推理]
-    H --> I[回傳對話結果至 Open WebUI 呈現]
-
-    %% 工作流自動化流程
-    B -->|工作流觸發 / Webhook| J[n8n 流程自動化引擎]
-    J --> K[讀寫 PostgreSQL 資料庫狀態]
-    J --> L[調用 Ollama / 外部 API 執行 AI Agent 任務]
-    L --> M[輸出自動化處理結果]
+    Start[執行 docker compose up -d] --> A[啟動 init-dir 容器]
+    A --> B{檢測宿主機作業系統}
+    B -->|Linux| C[套用 Native POSIX 權限 1000:1000 & 775]
+    B -->|Windows WSL2| D[套用 NTFS 777 存取權限與設定]
+    B -->|macOS| E[套用 virtioFS 自動映射 1000:1000 & 775]
+    C --> F[init-dir 成功退出 Exit 0]
+    D --> F
+    E --> F
+    F --> G[啟動微服務堆疊: Ollama, Qdrant, Postgres, n8n, Open WebUI, Tika]
+    G --> H[Open WebUI 執行 /api/version 健康檢查並呈綠燈]
 ```
 
 ---
@@ -105,6 +107,7 @@ flowchart TD
 sequenceDiagram
     autonumber
     actor User as 使用者
+    participant Init as init-dir 服務
     participant WebUI as Open WebUI (Frontend/Backend)
     participant Tika as Apache Tika
     participant Qdrant as Qdrant 向量庫
@@ -112,26 +115,30 @@ sequenceDiagram
     participant n8n as n8n 自動化平台
     participant DB as PostgreSQL 16
 
-    %% RAG 知識庫上傳與對話
-    User->>WebUI: 1. 上傳文件檔 (PDF/DOCX) 建立知識庫
-    WebUI->>Tika: 2. 傳送文件進行內文文字抽離 (no_ocr 模式)
-    Tika-->>WebUI: 3. 回傳抽離之純文字內容
-    WebUI->>Qdrant: 4. 計算 Embedding 並寫入向量索引
-    Qdrant-->>WebUI: 5. 確認向量儲存完成
+    %% 初始化階段
+    Init->>Init: 1. 自動檢測宿主 OS (Linux/Windows/macOS) 並修復 ./data/n8n 權限
+    Init-->>n8n: 2. 權限修復完成，釋放啟動依賴
 
-    User->>WebUI: 6. 發送對話問題 Prompt
-    WebUI->>Qdrant: 7. 搜尋相關 Context 向量
-    Qdrant-->>WebUI: 8. 回傳最相符內容區段
-    WebUI->>Ollama: 9. 發送 Prompt + Context 請求模型生成
-    Ollama-->>WebUI: 10. 串流 (Stream) 回傳 AI 生成解答
-    WebUI-->>User: 11. 網頁呈現最終回答
+    %% RAG 知識庫上傳與對話
+    User->>WebUI: 3. 上傳文件檔 (PDF/DOCX) 建立知識庫
+    WebUI->>Tika: 4. 傳送文件進行內文文字抽離 (no_ocr 模式)
+    Tika-->>WebUI: 5. 回傳抽離之純文字內容
+    WebUI->>Qdrant: 6. 計算 Embedding 並寫入向量索引
+    Qdrant-->>WebUI: 7. 確認向量儲存完成
+
+    User->>WebUI: 8. 發送對話問題 Prompt
+    WebUI->>Qdrant: 9. 搜尋相關 Context 向量
+    Qdrant-->>WebUI: 10. 回傳最相符內容區段
+    WebUI->>Ollama: 11. 發送 Prompt + Context 請求模型生成
+    Ollama-->>WebUI: 12. 串流 (Stream) 回傳 AI 生成解答
+    WebUI-->>User: 13. 網頁呈現最終回答
 
     %% 工作流觸發
-    User->>n8n: 12. 觸發 Webhook 或自動化工作流程
-    n8n->>DB: 13. 讀寫工作流程與狀態紀錄
-    DB-->>n8n: 14. 回傳查詢資料
-    n8n->>Ollama: 15. 呼叫 LLM 進行自動化處理
-    Ollama-->>n8n: 16. 回傳 AI 處理結果
+    User->>n8n: 14. 觸發 Webhook 或自動化工作流程
+    n8n->>DB: 15. 讀寫工作流程與狀態紀錄
+    DB-->>n8n: 16. 回傳查詢資料
+    n8n->>Ollama: 17. 呼叫 LLM 進行自動化處理
+    Ollama-->>n8n: 18. 回傳 AI 處理結果
 ```
 
 ---
@@ -157,7 +164,7 @@ sequenceDiagram
    ```
 
 3. **建立環境變數設定檔**:
-   複製 `.env.example` 為 `.env`，並調整自訂金鑰與密碼：
+   複製 `.env.example` 為 `.env`，並根據部署需求調整自訂金鑰與密碼：
    ```bash
    cp .env.example .env
    ```
@@ -195,9 +202,26 @@ sequenceDiagram
 - `./data/postgres`: 儲存 PostgreSQL 16 資料庫檔案。
 - `./data/n8n`: 儲存 n8n 工作流程、金鑰與憑證。
 
-### 3.3 跨平台相容性處理 (Linux & Windows)
-- **`N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS=false`**: 在 Windows NTFS 主機掛載實體目錄時，停用 strict POSIX 權限檢查以避免容器啟動崩潰。
-- **`.gitattributes`**: 設定 `*.sh text eol=lf`，確保 Shell 腳本 (`init-data.sh`) 在 Windows clone 時維持 Unix LF 格式，避免 `/bin/bash` 報錯 `\r: command not found`。
+### 3.3 跨平台相容性處理 (Linux & Windows & macOS)
+- **`init-dir` 自動修復服務**: [init-dir.sh](file:///home/dengkai/projects/ai-tools-compose/init-dir.sh) 在容器啟動時自動解析 `/proc/version` 與 `uname -r` 判斷宿主作業系統：
+  - **Linux**: 設定屬主 `1000:1000` (n8n node 使用者) 與 `775` 權限。
+  - **Windows (WSL2 / NTFS)**: 設定 `777` 存取權限並搭配 `N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS=false` 避免 POSIX 語法崩潰。
+  - **macOS (virtioFS / Docker Desktop)**: 設定屬主 `1000:1000` 與 `775` 權限。
+- **`.gitattributes`**: 設定 `*.sh text eol=lf`，確保 Shell 腳本 (`init-data.sh`, `init-dir.sh`) 在 Windows clone 時維持 Unix LF 格式，避免 `/bin/bash` 報錯 `\r: command not found`。
+- **Open WebUI 健康檢查修正**: 將容器健康檢查端點覆寫為 `/api/version` (`curl -sf http://localhost:8080/api/version`)，解決原生 `/health` 回傳 HTML 導致 `jq` 解析失敗報錯 `unhealthy` 的問題。
+
+### 3.4 程式與服務設定檔功能描述
+
+| 檔案名稱 | 檔案類型 | 詳細說明與功能描述 |
+| :--- | :--- | :--- |
+| [docker-compose.yaml](file:///home/dengkai/projects/ai-tools-compose/docker-compose.yaml) | YAML | 微服務編排主檔。定義 `init-dir` 權限修復服務、6 大 AI 服務容器、`web-app-bridge` 外部橋接網路與健康檢查設定。 |
+| [.env](file:///home/dengkai/projects/ai-tools-compose/.env) | ENV | 實體運行的環境變數檔。包含 PostgreSQL 密碼、Qdrant API 金鑰、Open WebUI 密鑰與 n8n 時區。 |
+| [.env.example](file:///home/dengkai/projects/ai-tools-compose/.env.example) | ENV | 環境變數範本檔。提供預設範例值與豐富的欄位說明註解。 |
+| [init-dir.sh](file:///home/dengkai/projects/ai-tools-compose/init-dir.sh) | Shell | **跨平台自動修復腳本**。自動判斷 Linux / Windows (WSL2) / macOS 並修正 `./data/n8n` 等 Volume 掛載權限。 |
+| [init-data.sh](file:///home/dengkai/projects/ai-tools-compose/init-data.sh) | Shell | **PostgreSQL 初始化腳本**。在 Postgres 容器首次啟動時自動建立 n8n 專用非 root 資料庫使用者與權限。 |
+| [Dockerfile](file:///home/dengkai/projects/ai-tools-compose/Dockerfile) | Dockerfile | Open WebUI 多階段編建檔（包含 SvelteKit 前端編譯與 Python 後端 FastAPI 模型預載）。 |
+| [tika-config.xml](file:///home/dengkai/projects/ai-tools-compose/tika-config.xml/tika-config.xml) | XML | Apache Tika 配置文件。停用高耗能的 Tesseract OCR，優化大批次 PDF/DOCX 文字萃取效能。 |
+| [.gitattributes](file:///home/dengkai/projects/ai-tools-compose/.gitattributes) | Config | 跨平台 Git 換行符強制設定檔。確保所有 `*.sh` Shell 腳本強制保持 Unix LF 格式。 |
 
 ---
 
@@ -216,7 +240,7 @@ docker compose ps
 
 ### 4.3 檢視服務即時日誌 (Logs)
 ```bash
-docker compose logs -f
+docker compose logs -f [service_name]
 ```
 
 ### 4.4 停止與關閉服務
@@ -227,7 +251,7 @@ docker compose down
 ### 4.5 服務存取端點 (Endpoints)
 容器啟動完成後，可透過瀏覽器存取以下服務：
 
-| 服務名稱 | 存取網址 / 端點 | 預設預設說明 |
+| 服務名稱 | 存取網址 / 端點 | 預設說明 |
 | :--- | :--- | :--- |
 | **Open WebUI** | [http://localhost:3000](http://localhost:3000) | 圖形化對話與 RAG 管理介面 |
 | **n8n 工作流** | [http://localhost:5678](http://localhost:5678) | 工作流自動化與 AI Agent 編輯器 |
@@ -243,6 +267,12 @@ docker compose down
 ```
 ai-tools-compose/
 ├── .agents/                      # Agent 任務紀錄與 Prompt 日誌
+│   ├── skills/                   # ai-tools-compose 技能手冊目錄
+│   │   └── ai-tools-compose/
+│   │       ├── SKILL.md          # 技能主手冊
+│   │       ├── inspections/      # 檢查與驗證程序清單
+│   │       ├── references/       # 架構與互動流程解說
+│   │       └── scripts/          # Docker Compose 工具說明
 │   └── task_logs/                # 標準任務執行紀錄檔
 │       ├── 01_implementation_plan.md
 │       ├── 02_task_list.md
@@ -264,6 +294,7 @@ ai-tools-compose/
 ├── Dockerfile                    # Open WebUI 多階段建置檔
 ├── docker-compose.yaml           # Docker Compose 微服務編排主設定檔
 ├── init-data.sh                  # PostgreSQL 初始化非 Root 使用者腳本
+├── init-dir.sh                   # 跨平台資料目錄自動建立與權限修復腳本
 └── README.md                     # 專案說明文件
 ```
 
@@ -282,9 +313,9 @@ docker compose config
   ```bash
   docker compose exec postgres pg_isready -h localhost -U root -d n8n
   ```
-- **Open WebUI**:
+- **Open WebUI (API 健康端點)**:
   ```bash
-  curl -I http://localhost:3000
+  curl -sf http://localhost:8080/api/version
   ```
 - **Ollama API**:
   ```bash
