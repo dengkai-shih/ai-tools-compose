@@ -319,4 +319,4 @@ data/
 #local-files/
 #tika-config.xml/
 #bash/02-ollama-pull-module.sh
-docs
+#docs/
